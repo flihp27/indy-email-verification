@@ -23,7 +23,7 @@ class EmailVerificationConfig(AppConfig):
             cache.get("")
         except ProgrammingError:
             return
-
+        credential_definition_id="FUKLxsjrYSHgScLbHuPTo4:3:CL:29366:RegistreAccesVirtuelCQEN-0.1.23-flihp"
         if cache.get("credential_definition_id") is None:
             schema_body = {
                 "schema_name": "CQENDroitAccesVirtuel",
