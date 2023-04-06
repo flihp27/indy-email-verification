@@ -138,87 +138,87 @@ def verify_redirect(request, connection_id):
 
 @csrf_exempt
 def webhooks(request, topic):
-    if __name__ == '__main__':
-        message = json.loads(request.body)
-        logger.info(f"webhook recieved - topic: {topic} body: {request.body}")
 
-        if topic == "connections" and message["state"] == "request":
-            connection_id = message["connection_id"]
+    message = json.loads(request.body)
+    logger.info(f"webhook recieved - topic: {topic} body: {request.body}")
+
+    if topic == "connections" and message["state"] == "request":
+        connection_id = message["connection_id"]
+        SessionState.objects.filter(connection_id=connection_id).update(
+            state="connection-request-received"
+        )
+
+    # Handle new invites, send cred offer
+    if topic == "connections" and message["state"] == "response":
+        credential_definition_id = cache.get("credential_definition_id")
+        assert credential_definition_id is not None
+        connection_id = str(message["connection_id"])
+
+        SessionState.objects.filter(connection_id=connection_id).update(
+            state="connection-formed"
+        )
+
+        time.sleep(5)
+
+        logger.info(
+            f"Sending credential offer for connection {connection_id} "
+            f"and credential definition {credential_definition_id}"
+        )
+
+        verification = get_object_or_404(Verification, connection_id=connection_id)
+
+        request_body = {
+            "auto_issue": True,
+            "connection_id": connection_id,
+            "cred_def_id": credential_definition_id,
+            "credential_preview": {
+                "attributes": [
+                    {
+                        "name": "email",
+                        "value": verification.email,
+                        "mime-type": "text/plain",
+                    },
+                    {
+                        "name": "time",
+                        "value": str(datetime.utcnow()),
+                        "mime-type": "text/plain",
+                    },
+                ]
+            },
+        }
+
+        try:
+            response = requests.post(
+                f"{AGENT_URL}/issue-credential/send-offer",headers={"x-api-key": API_KEY}, json=request_body
+            )
+            response.raise_for_status()
+        except Exception:
+            logger.exception("Error sending credential offer:")
             SessionState.objects.filter(connection_id=connection_id).update(
-                state="connection-request-received"
+                state="offer-error"
             )
-
-        # Handle new invites, send cred offer
-        if topic == "connections" and message["state"] == "response":
-            credential_definition_id = cache.get("credential_definition_id")
-            assert credential_definition_id is not None
-            connection_id = str(message["connection_id"])
-
+        else:
             SessionState.objects.filter(connection_id=connection_id).update(
-                state="connection-formed"
+                state="offer-sent"
             )
 
-            time.sleep(5)
-
-            logger.info(
-                f"Sending credential offer for connection {connection_id} "
-                f"and credential definition {credential_definition_id}"
-            )
-
-            verification = get_object_or_404(Verification, connection_id=connection_id)
-
-            request_body = {
-                "auto_issue": True,
-                "connection_id": connection_id,
-                "cred_def_id": credential_definition_id,
-                "credential_preview": {
-                    "attributes": [
-                        {
-                            "name": "email",
-                            "value": verification.email,
-                            "mime-type": "text/plain",
-                        },
-                        {
-                            "name": "time",
-                            "value": str(datetime.utcnow()),
-                            "mime-type": "text/plain",
-                        },
-                    ]
-                },
-            }
-
-            try:
-                response = requests.post(
-                    f"{AGENT_URL}/issue-credential/send-offer",headers={"x-api-key": API_KEY}, json=request_body
-                )
-                response.raise_for_status()
-            except Exception:
-                logger.exception("Error sending credential offer:")
-                SessionState.objects.filter(connection_id=connection_id).update(
-                    state="offer-error"
-                )
-            else:
-                SessionState.objects.filter(connection_id=connection_id).update(
-                    state="offer-sent"
-                )
-
-            return HttpResponse()
-
-        # Handle completion of credential issue
-        if topic == "issue_credential" and message["state"] == "credential_issued":
-            credential_exchange_id = message["credential_exchange_id"]
-            connection_id = message["connection_id"]
-
-            logger.info(
-                "Completed credential issue for credential exchange "
-                f"{credential_exchange_id} and connection {connection_id}"
-            )
-
-            SessionState.objects.filter(connection_id=connection_id).update(
-                state="credential-issued"
-            )
-
-            return HttpResponse()
-
-        logger.warning(f"Webhook for topic {topic} and state {message['state']} is not implemented")
         return HttpResponse()
+
+    # Handle completion of credential issue
+    if topic == "issue_credential" and message["state"] == "credential_issued":
+        credential_exchange_id = message["credential_exchange_id"]
+        connection_id = message["connection_id"]
+
+        logger.info(
+            "Completed credential issue for credential exchange "
+            f"{credential_exchange_id} and connection {connection_id}"
+        )
+
+        SessionState.objects.filter(connection_id=connection_id).update(
+            state="credential-issued"
+        )
+
+        return HttpResponse()
+
+    logger.warning(f"Webhook for topic {topic} and state {message['state']} is not implemented")
+    return HttpResponse()
