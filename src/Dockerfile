@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD [ "/bin/sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8080" ]
+CMD [ "/bin/sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8080 --noreload" ]
 
 # ./manage.py migrate && ./manage.py runserver 0.0.0.0:$${PORT}
 # docker build -t my-python-app .
